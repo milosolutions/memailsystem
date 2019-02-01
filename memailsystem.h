@@ -11,9 +11,9 @@ class QTextStream;
 namespace Email
 {
 struct Message {
-    QByteArray recipient;
-    QByteArray subject;
-    QByteArray body;
+    QString recipient;
+    QString subject;
+    QString body;
 };
 
 using Messages = QVector<Message>;

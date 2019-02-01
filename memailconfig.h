@@ -9,9 +9,9 @@ class EmailConfig : public MConfig
     EmailConfig();
     int timeout;
     int port;
-    QByteArray host;
-    QByteArray user;
-    QByteArray password;
+    QString host;
+    QString user;
+    QString password;
 };
 
 #endif  // EMAILCONFIG_H
