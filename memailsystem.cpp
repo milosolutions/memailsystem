@@ -20,7 +20,8 @@
 
 namespace Email
 {
-Sender::Sender(EmailConfig *config, QObject *parent) : QObject(parent), m_config(config)
+
+Sender::Sender(Email::EmailConfig *config, QObject *parent) : QObject(parent), m_config(config)
 {
     m_socket = new QSslSocket(this);
     m_textStream = new QTextStream(m_socket);
@@ -77,14 +78,14 @@ void Sender::readFromSocket()
                 // GMAIL is using XOAUTH2 protocol, which basically means that password and username
                 // has to be sent in base64 coding
                 // https://developers.google.com/gmail/xoauth2_protocol
-                *m_textStream << m_config->user.toBase64() << "\r\n";
+                *m_textStream << toBase64(m_config->user) << "\r\n";
                 m_state = Pass;
             }
             break;
         }
         case Pass: {
             if (code == "334") {  // Trying pass
-                *m_textStream << m_config->password.toBase64() << "\r\n";
+                *m_textStream << toBase64(m_config->password) << "\r\n";
                 m_state = Mail;
             }
             break;
@@ -95,6 +96,9 @@ void Sender::readFromSocket()
                 // the following way -> <email@gmail.com>
                 *m_textStream << "MAIL FROM:<" << m_config->user << ">\r\n";
                 m_state = Rcpt;
+            } else if (code == "535") {
+                qWarning() << QString("Authentication error");
+                m_state = Close;
             }
             break;
         }
@@ -180,5 +184,13 @@ void Sender::processNextRequest()
     }
     qInfo("Connection established.");
 }
+
+QString toBase64(const QString& string)
+{
+    QByteArray ba;
+    ba.append(string);
+    return ba.toBase64();
+}
+
 
 }  // namespace Email

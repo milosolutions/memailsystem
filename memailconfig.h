@@ -1,9 +1,9 @@
 #ifndef EMAILCONFIG_H
 #define EMAILCONFIG_H
+#include <QString>
+namespace Email {
 
-#include "mconfig/mconfig.h"
-
-class EmailConfig : public MConfig
+class EmailConfig 
 {
  public:
     EmailConfig();
@@ -14,4 +14,6 @@ class EmailConfig : public MConfig
     QString password;
 };
 
+
+};
 #endif  // EMAILCONFIG_H

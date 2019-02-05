@@ -3,23 +3,28 @@
 
 #include <QObject>
 #include <QQueue>
+#include <QString>
 
-class EmailConfig;
 class QSslSocket;
 class QTextStream;
 
 namespace Email
 {
+
+class EmailConfig;
 struct Message {
     QString recipient;
     QString subject;
     QString body;
 };
 
+QString toBase64(const QString& string);
+
 using Messages = QVector<Message>;
 class MessageProvider
 {
  public:
+    virtual ~MessageProvider() {}
     virtual const Messages &emails() const = 0;
 };
 
@@ -37,8 +42,8 @@ class Sender : public QObject
     QTextStream *m_textStream;
     int m_state;
     EmailConfig *m_config;
-    QByteArray m_recipient;
-    QByteArray m_data;
+    QString m_recipient;
+    QString m_data;
     enum States { Init, HandShake, Auth, User, Pass, Rcpt, Mail, Data, Body, Quit, Close };
     QQueue<Message> m_emailQueue;
     bool m_processing = false;
