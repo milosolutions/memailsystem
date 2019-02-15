@@ -38,15 +38,15 @@ int main(int argc, char *argv[])
     a.setOrganizationName("Milo");
 
     Email::EmailConfig example;
-    example.host = "your.mail.host";
+    example.host = "smtp.gmail.com";
     example.port = 465;
-    example.user = "user";
-    example.password = "password";
+    example.user = "your.email@gmail.com";
+    example.password = "your.password";
     example.timeout = 10000;
 
     auto mailSender = new Email::Sender(&example, &a);
     Email::Message m;
-    m.recipient = "mail@recipient.com";
+    m.recipient = "any@recipient.pl";
     m.subject = QString("HelloWorld! - subject");
     m.body = QString("HelloWorld! - content");;
     mailSender->send(m);
