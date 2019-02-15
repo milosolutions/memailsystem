@@ -4,13 +4,14 @@
 #include <QObject>
 #include <QQueue>
 #include <QString>
+#include <QLoggingCategory>
 
 class QSslSocket;
 class QTextStream;
 
 namespace Email
 {
-
+Q_DECLARE_LOGGING_CATEGORY(EmailLog);
 class EmailConfig;
 struct Message {
     QString recipient;

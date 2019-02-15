@@ -1,6 +1,8 @@
 #include "memailsystem.h"
 #include <QSslSocket>
 #include <QTextStream>
+#include <QLoggingCategory>
+#include <QDebug>
 #include "memailconfig.h"
 
 // enable/disable class internal debug messages (default: 0)
@@ -20,6 +22,8 @@
 
 namespace Email
 {
+
+Q_LOGGING_CATEGORY(EmailLog, "system.email")
 
 Sender::Sender(Email::EmailConfig *config, QObject *parent) : QObject(parent), m_config(config)
 {
@@ -97,7 +101,7 @@ void Sender::readFromSocket()
                 *m_textStream << "MAIL FROM:<" << m_config->user << ">\r\n";
                 m_state = Rcpt;
             } else if (code == "535") {
-                qWarning() << QString("Authentication error");
+                qCWarning(EmailLog) << QString("Authentication error");
                 m_state = Close;
             }
             break;
@@ -116,7 +120,7 @@ void Sender::readFromSocket()
                 *m_textStream << "DATA\r\n";
                 m_state = Body;
             } else {  // ignore all errors
-                qWarning() << QString("Failed to add recipient: %1, error code: %2")
+                qCWarning(EmailLog) << QString("Failed to add recipient: %1, error code: %2")
                                   .arg(QString(m_recipient))
                                   .arg(QString(code));
                 quit();
@@ -132,7 +136,7 @@ void Sender::readFromSocket()
         }
         case Quit: {
             if (code == "250") {
-                qInfo("Message sent");
+                qCDebug(EmailLog) << "Message sent";
                 quit();
             }
             break;
@@ -144,8 +148,8 @@ void Sender::readFromSocket()
                 m_processing = false;
                 processNextRequest();
             } else {
-                qCritical("Cannot disconnect from mail server: %s",
-                          qPrintable(m_socket->errorString()));
+                qCCritical(EmailLog) << QString("Cannot disconnect from mail server: %s")
+                          .arg(qPrintable(m_socket->errorString()));
             }
             return;
         }
@@ -180,9 +184,9 @@ void Sender::processNextRequest()
     m_state = Init;
     m_socket->connectToHostEncrypted(m_config->host, m_config->port);
     if (!m_socket->waitForConnected(m_config->timeout)) {
-        qCritical("Cannot connect with mail server: %s", qPrintable(m_socket->errorString()));
+        qCCritical(EmailLog) << QString("Cannot connect with mail server: %s").arg(qPrintable(m_socket->errorString()));
     }
-    qInfo("Connection established.");
+    qCDebug(EmailLog) << "Connection established.";
 }
 
 QString toBase64(const QString& string)
