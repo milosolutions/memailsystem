@@ -21,14 +21,6 @@ struct Message {
 
 QString toBase64(const QString& string);
 
-using Messages = QVector<Message>;
-class MessageProvider
-{
- public:
-    virtual ~MessageProvider() {}
-    virtual const Messages &emails() const = 0;
-};
-
 class Sender : public QObject
 {
     Q_OBJECT

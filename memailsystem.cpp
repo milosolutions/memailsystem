@@ -5,14 +5,6 @@
 #include <QDebug>
 #include "memailconfig.h"
 
-// enable/disable class internal debug messages (default: 0)
-#define Sender_INTERNAL_DEBUG 0
-#if Sender_INTERNAL_DEBUG
-#include <QDebug>
-#define internDbg(...) qDebug() << __VA_ARGS__
-#else
-#define internDbg(...)
-#endif
 
 /*! \class Sender
  *  \brief The sending e-mail system.
@@ -24,6 +16,17 @@ namespace Email
 {
 
 Q_LOGGING_CATEGORY(EmailLog, "system.email")
+
+// enable/disable class internal debug messages (default: 0)
+#define Sender_INTERNAL_DEBUG 0
+#if Sender_INTERNAL_DEBUG
+// USE it on your own risk! It can expose your sensitive data like passwords.
+#pragma message("WARNING! EMail protocol exposed! Set Sender_INTERNAL_DEBUG to 0 when you are done debugging!")
+#define protocolDbg(direction, msg) qCDebug(EmailLog) << direction << qUtf8Printable(msg);
+#else
+#define protocolDbg(...)
+#endif
+
 
 Sender::Sender(Email::EmailConfig *config, QObject *parent) : QObject(parent), m_config(config)
 {
@@ -43,19 +46,21 @@ void Sender::send(const Message &email)
 void Sender::readFromSocket()
 {
     auto response = m_socket->readAll();
-    internDbg(response);
+    protocolDbg("RECEIVED: ", qUtf8Printable(response));
     Q_ASSERT(response.size() >= 3);
     auto code = response.left(3);
 
-    auto quit = [this]() {
-        *m_textStream << "QUIT\r\n";
+    QString protocolMessage;
+    QTextStream stream(&protocolMessage);
+    auto quit = [this, &stream]() {
+        stream << "QUIT\r\n";
         m_state = Close;
     };
 
     switch (m_state) {
         case Init: {
             if (code == "220") {  // banner was okay, let's go on
-                *m_textStream << "EHLO localhost"
+                stream << "EHLO localhost"
                               << "\r\n";
                 m_state = HandShake;
             }
@@ -63,7 +68,7 @@ void Sender::readFromSocket()
         }
         case HandShake: {
             if (code == "250") {  // Send EHLO once again but now encrypted
-                *m_textStream << "EHLO localhost"
+                stream << "EHLO localhost"
                               << "\r\n";
                 m_state = Auth;
             }
@@ -71,7 +76,7 @@ void Sender::readFromSocket()
         }
         case Auth: {
             if (code == "250") {  // Trying AUTH
-                *m_textStream << "AUTH LOGIN"
+                stream<< "AUTH LOGIN"
                               << "\r\n";
                 m_state = User;
             }
@@ -82,14 +87,16 @@ void Sender::readFromSocket()
                 // GMAIL is using XOAUTH2 protocol, which basically means that password and username
                 // has to be sent in base64 coding
                 // https://developers.google.com/gmail/xoauth2_protocol
-                *m_textStream << toBase64(m_config->user) << "\r\n";
+                QString user = m_config->base64Encoding ? toBase64(m_config->user) : m_config->user;
+                stream << user << "\r\n";
                 m_state = Pass;
             }
             break;
         }
         case Pass: {
             if (code == "334") {  // Trying pass
-                *m_textStream << toBase64(m_config->password) << "\r\n";
+                QString password = m_config->base64Encoding ? toBase64(m_config->password) : m_config->password;
+                stream << password << "\r\n";
                 m_state = Mail;
             }
             break;
@@ -98,7 +105,7 @@ void Sender::readFromSocket()
             if (code == "235") {
                 // Apperantly for Google it is mandatory to have MAIL FROM and RCPT email formated
                 // the following way -> <email@gmail.com>
-                *m_textStream << "MAIL FROM:<" << m_config->user << ">\r\n";
+                stream << "MAIL FROM:<" << m_config->user << ">\r\n";
                 m_state = Rcpt;
             } else if (code == "535") {
                 qCWarning(EmailLog) << QString("Authentication error");
@@ -110,14 +117,14 @@ void Sender::readFromSocket()
             if (code == "250") {
                 // Apperantly for Google it is mandatory to have MAIL FROM and RCPT email formated
                 // the following way -> <email@gmail.com>
-                *m_textStream << "RCPT TO:<" << m_recipient << ">\r\n";
+                stream << "RCPT TO:<" << m_recipient << ">\r\n";
                 m_state = Data;
             }
             break;
         }
         case Data: {
             if (code == "250") {
-                *m_textStream << "DATA\r\n";
+                stream << "DATA\r\n";
                 m_state = Body;
             } else {  // ignore all errors
                 qCWarning(EmailLog) << QString("Failed to add recipient: %1, error code: %2")
@@ -129,7 +136,7 @@ void Sender::readFromSocket()
         }
         case Body: {
             if (code == "354") {
-                *m_textStream << m_data << "\r\n.\r\n";
+                stream << m_data << "\r\n.\r\n";
                 m_state = Quit;
             }
             break;
@@ -142,14 +149,14 @@ void Sender::readFromSocket()
             break;
         }
         case Close: {
-            qDebug("closing socket");
+            qCDebug(EmailLog) << "closing socket";
             m_socket->disconnectFromHost();
             if (m_socket->waitForDisconnected(m_config->timeout)) {
                 m_processing = false;
                 processNextRequest();
             } else {
                 qCCritical(EmailLog) << QString("Cannot disconnect from mail server: %s")
-                          .arg(qPrintable(m_socket->errorString()));
+                          .arg(qUtf8Printable(m_socket->errorString()));
             }
             return;
         }
@@ -160,6 +167,8 @@ void Sender::readFromSocket()
     }
 
     // flush after each state change
+    protocolDbg("SENDING: ", protocolMessage);
+    *m_textStream << protocolMessage;
     m_textStream->flush();
 }
 
@@ -184,7 +193,7 @@ void Sender::processNextRequest()
     m_state = Init;
     m_socket->connectToHostEncrypted(m_config->host, m_config->port);
     if (!m_socket->waitForConnected(m_config->timeout)) {
-        qCCritical(EmailLog) << QString("Cannot connect with mail server: %s").arg(qPrintable(m_socket->errorString()));
+        qCCritical(EmailLog) << QString("Cannot connect with mail server: %s").arg(qUtf8Printable(m_socket->errorString()));
     }
     qCDebug(EmailLog) << "Connection established.";
 }

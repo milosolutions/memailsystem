@@ -8,10 +8,11 @@ class EmailConfig
  public:
     EmailConfig();
     int timeout;
-    int port;
+    quint16 port;
     QString host;
     QString user;
     QString password;
+    bool base64Encoding = true;
 };
 
 
