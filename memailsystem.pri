@@ -3,10 +3,8 @@ CONFIG += c++11
 
 INCLUDEPATH += $$PWD
 
-HEADERS += $$PWD/memailsystem.h \
-    $$PWD/memailconfig.h
+HEADERS += $$PWD/memailsystem.h
 
-SOURCES += $$PWD/memailsystem.cpp \
-    $$PWD/memailconfig.cpp
+SOURCES += $$PWD/memailsystem.cpp
 
 DEFINES += MEMAILSYSTEM_LIB

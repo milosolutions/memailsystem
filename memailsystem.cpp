@@ -1,9 +1,30 @@
+/*******************************************************************************
+Copyright (C) 2019 Milo Solutions
+Contact: https://www.milosolutions.com
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*******************************************************************************/
 #include "memailsystem.h"
 #include <QSslSocket>
 #include <QTextStream>
 #include <QLoggingCategory>
 #include <QDebug>
-#include "memailconfig.h"
 
 
 /*! \class Sender
@@ -28,7 +49,7 @@ Q_LOGGING_CATEGORY(EmailLog, "system.email")
 #endif
 
 
-Sender::Sender(Email::EmailConfig *config, QObject *parent) : QObject(parent), m_config(config)
+Sender::Sender(const Email::EmailConfig& config, QObject *parent) : QObject(parent), m_config(config)
 {
     m_socket = new QSslSocket(this);
     m_textStream = new QTextStream(m_socket);
@@ -87,7 +108,7 @@ void Sender::readFromSocket()
                 // GMAIL is using XOAUTH2 protocol, which basically means that password and username
                 // has to be sent in base64 coding
                 // https://developers.google.com/gmail/xoauth2_protocol
-                QString user = m_config->base64Encoding ? toBase64(m_config->user) : m_config->user;
+                QString user = m_config.base64Encoding ? toBase64(m_config.user) : m_config.user;
                 stream << user << "\r\n";
                 m_state = Pass;
             }
@@ -95,7 +116,7 @@ void Sender::readFromSocket()
         }
         case Pass: {
             if (code == "334") {  // Trying pass
-                QString password = m_config->base64Encoding ? toBase64(m_config->password) : m_config->password;
+                QString password = m_config.base64Encoding ? toBase64(m_config.password) : m_config.password;
                 stream << password << "\r\n";
                 m_state = Mail;
             }
@@ -105,7 +126,7 @@ void Sender::readFromSocket()
             if (code == "235") {
                 // Apperantly for Google it is mandatory to have MAIL FROM and RCPT email formated
                 // the following way -> <email@gmail.com>
-                stream << "MAIL FROM:<" << m_config->user << ">\r\n";
+                stream << "MAIL FROM:<" << m_config.user << ">\r\n";
                 m_state = Rcpt;
             } else if (code == "535") {
                 qCWarning(EmailLog) << QString("Authentication error");
@@ -151,11 +172,11 @@ void Sender::readFromSocket()
         case Close: {
             qCDebug(EmailLog) << "closing socket";
             m_socket->disconnectFromHost();
-            if (m_socket->waitForDisconnected(m_config->timeout)) {
+            if (m_socket->waitForDisconnected(m_config.timeout)) {
                 m_processing = false;
                 processNextRequest();
             } else {
-                qCCritical(EmailLog) << QString("Cannot disconnect from mail server: %s")
+                qCCritical(EmailLog) << QString("Cannot disconnect from mail server: %1")
                           .arg(qUtf8Printable(m_socket->errorString()));
             }
             return;
@@ -181,7 +202,7 @@ void Sender::processNextRequest()
 
     m_recipient = email.recipient;
     m_data = "To: " + m_recipient + "\n";
-    m_data.append("From: " + m_config->user + "\n");
+    m_data.append("From: " + m_config.user + "\n");
     m_data.append("Subject: " + email.subject + "\n");
     m_data.append("MIME-Version: 1.0\n");
     m_data.append("Content-Type: text/html; charset=utf-8\n");
@@ -191,9 +212,9 @@ void Sender::processNextRequest()
     m_data.replace("\r\n.\r\n", "\r\n..\r\n");
 
     m_state = Init;
-    m_socket->connectToHostEncrypted(m_config->host, m_config->port);
-    if (!m_socket->waitForConnected(m_config->timeout)) {
-        qCCritical(EmailLog) << QString("Cannot connect with mail server: %s").arg(qUtf8Printable(m_socket->errorString()));
+    m_socket->connectToHostEncrypted(m_config.host, m_config.port);
+    if (!m_socket->waitForConnected(m_config.timeout)) {
+        qCCritical(EmailLog) << QString("Cannot connect with mail server: %1").arg(qUtf8Printable(m_socket->errorString()));
     }
     qCDebug(EmailLog) << "Connection established.";
 }
@@ -204,6 +225,5 @@ QString toBase64(const QString& string)
     ba.append(string);
     return ba.toBase64();
 }
-
 
 }  // namespace Email

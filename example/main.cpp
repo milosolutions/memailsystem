@@ -1,5 +1,5 @@
 /*******************************************************************************
-Copyright (C) 2017 Milo Solutions
+Copyright (C) 2019 Milo Solutions
 Contact: https://www.milosolutions.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -20,9 +20,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 *******************************************************************************/
-
-
-#include "memailconfig.h"
 #include "memailsystem.h"
 #include <QCoreApplication>
 #include <QLoggingCategory>
@@ -30,7 +27,7 @@ SOFTWARE.
 
 Q_LOGGING_CATEGORY(coreMain, "core.main")
 
-//! Example use of MConfig class
+//! Example use of Email::Sender class
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
@@ -44,7 +41,7 @@ int main(int argc, char *argv[])
     example.password = "your.password";
     example.timeout = 10000;
 
-    auto mailSender = new Email::Sender(&example, &a);
+    auto mailSender = new Email::Sender(example, &a);
     Email::Message m;
     m.recipient = "any@recipient.pl";
     m.subject = QString("HelloWorld! - subject");
