@@ -49,7 +49,8 @@ Q_LOGGING_CATEGORY(EmailLog, "system.email")
 #endif
 
 
-Sender::Sender(const Email::EmailConfig& config, QObject *parent) : QObject(parent), m_config(config)
+Sender::Sender(const Email::EmailConfig& config, QObject *parent)
+    : QObject(parent), m_config(config)
 {
     m_socket = new QSslSocket(this);
     m_textStream = new QTextStream(m_socket);

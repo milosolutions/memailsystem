@@ -66,13 +66,14 @@ public:
 private:
     void readFromSocket();
     void processNextRequest();
-    QSslSocket *m_socket;
-    QTextStream *m_textStream;
+    QSslSocket *m_socket = nullptr;
+    QTextStream *m_textStream = nullptr;
     int m_state;
     EmailConfig m_config;
     QString m_recipient;
     QString m_data;
-    enum States { Init, HandShake, Auth, User, Pass, Rcpt, Mail, Data, Body, Quit, Close };
+    enum States { Init, HandShake, Auth, User, Pass, Rcpt, Mail, Data, Body,
+                  Quit, Close };
     QQueue<Message> m_emailQueue;
     bool m_processing = false;
 };
