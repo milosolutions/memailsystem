@@ -21,16 +21,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 *******************************************************************************/
 #include "memailsystem.h"
+#include "emailconfig.h"
 #include <QSslSocket>
 #include <QTextStream>
 #include <QLoggingCategory>
-#include <QDebug>
+#include <QRegularExpression>
 
 
 /*! \class Sender
  *  \brief The sending e-mail system.
  *
- * Sends email via SMPT server.
+ * Sends email using SMPT protocol (RFC 4954).
  */
 
 namespace Email
@@ -49,7 +50,7 @@ Q_LOGGING_CATEGORY(EmailLog, "system.email")
 #endif
 
 
-Sender::Sender(const Email::EmailConfig& config, QObject *parent)
+Sender::Sender(EmailConfig* config, QObject *parent)
     : QObject(parent), m_config(config)
 {
     m_socket = new QSslSocket(this);
@@ -59,6 +60,11 @@ Sender::Sender(const Email::EmailConfig& config, QObject *parent)
 
 void Sender::send(const Message &email)
 {
+    if (m_config->host.isEmpty() || !m_config->port ||
+        m_config->user.isEmpty() || m_config->password.isEmpty()) {
+        emit finished(NotConfigured);
+        return;
+    }
     Q_ASSERT(email.recipient.size());
     Q_ASSERT(email.body.size());
     m_emailQueue.enqueue(email);
@@ -81,111 +87,112 @@ void Sender::readFromSocket()
 
     switch (m_state) {
         case Init: {
-            if (code == "220") {  // banner was okay, let's go on
-                stream << "EHLO localhost"
-                              << "\r\n";
+            if (code == "220") {
+                //Server sent prompt, say hello
+                stream << "EHLO localhost" << "\r\n";
                 m_state = HandShake;
             }
             break;
         }
         case HandShake: {
-            if (code == "250") {  // Send EHLO once again but now encrypted
-                stream << "EHLO localhost"
-                              << "\r\n";
+        if (code == "250") {
+            // Handshake succesful, make sure login authentication is supported
+            QRegularExpression re("250-AUTH\\s*(.+)");
+            auto m = re.match(response);
+            if (m.hasMatch() && m.captured(1).contains("LOGIN")) {
+                // Autheticate with login mechanism
+                stream << "AUTH LOGIN" << "\r\n";
                 m_state = Auth;
+            } else {
+                m_exitCode = AuthLoginError;
+                quit();
             }
-            break;
+        }
+        break;
         }
         case Auth: {
-            if (code == "250") {  // Trying AUTH
-                stream<< "AUTH LOGIN"
-                              << "\r\n";
+            if (code == "334") {
+                // AUTH started, now expects user name
+                // all responses for AUTH must be encoded in BASE64 (rfc-4954)
+                QByteArray user = m_config->base64Encoding ? m_config->user.toBase64() : m_config->user;
+                stream << user << "\r\n";
                 m_state = User;
             }
             break;
         }
         case User: {
-            if (code == "334") {  // Trying User
-                // GMAIL is using XOAUTH2 protocol, which basically means that password and username
-                // has to be sent in base64 coding
-                // https://developers.google.com/gmail/xoauth2_protocol
-                QString user = m_config.base64Encoding ? toBase64(m_config.user) : m_config.user;
-                stream << user << "\r\n";
-                m_state = Pass;
-            }
-            break;
+        if (code == "334") {  // Trying pass
+            // AUTH accepted user, provide password
+            // all responses for AUTH must be encoded in BASE64 (rfc-4954)
+            QByteArray password = m_config->base64Encoding ? m_config->password.toBase64() : m_config->password;
+            stream << password << "\r\n";
+            m_state = Pass;
+        } else if (code == "535") {
+            m_exitCode = UserFailed;
+            quit();
+        }
+        break;
+
         }
         case Pass: {
-            if (code == "334") {  // Trying pass
-                QString password = m_config.base64Encoding ? toBase64(m_config.password) : m_config.password;
-                stream << password << "\r\n";
-                m_state = Mail;
-            }
-            break;
+        if (code == "235") {
+            //AUTH successful, set sender address
+            stream << "MAIL FROM:<" << m_config->user << ">\r\n";
+            m_state = From;
+        } else if (code == "535") {
+            m_exitCode = PassFailed;
+            quit();
         }
-        case Mail: {
-            if (code == "235") {
-                // Apperantly for Google it is mandatory to have MAIL FROM and RCPT email formated
-                // the following way -> <email@gmail.com>
-                stream << "MAIL FROM:<" << m_config.user << ">\r\n";
-                m_state = Rcpt;
-            } else if (code == "535") {
-                qCWarning(EmailLog) << QString("Authentication error");
-                m_state = Close;
-            }
-            break;
+        break;
         }
+
+    case From: {
+        if (code == "250") {
+            //OK, set recipient
+            stream << "RCPT TO:<" << m_recipient << ">\r\n";
+            m_state = Rcpt;
+        }
+        break;
+    }
+
         case Rcpt: {
-            if (code == "250") {
-                // Apperantly for Google it is mandatory to have MAIL FROM and RCPT email formated
-                // the following way -> <email@gmail.com>
-                stream << "RCPT TO:<" << m_recipient << ">\r\n";
-                m_state = Data;
-            }
-            break;
+        if (code == "250") {
+            //OK, start sending data
+            stream << "DATA\r\n";
+            m_state = Data;
+        } else {  // ignore all errors
+            m_exitCode = RcptError;
+            quit();
+        }
+        break;
         }
         case Data: {
-            if (code == "250") {
-                stream << "DATA\r\n";
-                m_state = Body;
-            } else {  // ignore all errors
-                qCWarning(EmailLog) << QString("Failed to add recipient: %1, error code: %2")
-                                  .arg(QString(m_recipient))
-                                  .arg(QString(code));
-                quit();
-            }
-            break;
+        if (code == "354") {
+            //Server ready - send header, body and ending sequence
+            stream << m_data << "\r\n.\r\n";
+            m_state = Sent;
         }
-        case Body: {
-            if (code == "354") {
-                stream << m_data << "\r\n.\r\n";
-                m_state = Quit;
-            }
-            break;
+        break;
         }
-        case Quit: {
-            if (code == "250") {
-                qCDebug(EmailLog) << "Message sent";
-                quit();
-            }
-            break;
+    case Sent: {
+        if (code == "250") {
+            m_exitCode = Success;
+            quit();
         }
-        case Close: {
-            qCDebug(EmailLog) << "closing socket";
-            m_socket->disconnectFromHost();
-            if (m_socket->waitForDisconnected(m_config.timeout)) {
-                m_processing = false;
-                processNextRequest();
-            } else {
-                qCCritical(EmailLog) << QString("Cannot disconnect from mail server: %1")
-                          .arg(qUtf8Printable(m_socket->errorString()));
-            }
-            return;
-        }
+        break;
+    }
+    case Close: {
+        m_socket->disconnectFromHost();
+        m_socket->waitForDisconnected(m_config->timeout);
+        emit finished(m_exitCode);
+        m_processing = false;
+        processNextRequest();
+        return;
+    }
         default:
-            m_state = Close;
-            emit qCritical("Failed to send message");
-            break;
+        m_state = Close;
+        m_exitCode = Unknown;
+        break;
     }
 
     // flush after each state change
@@ -202,29 +209,41 @@ void Sender::processNextRequest()
     const auto &email = m_emailQueue.dequeue();
 
     m_recipient = email.recipient;
+    // Header
     m_data = "To: " + m_recipient + "\n";
-    m_data.append("From: " + m_config.user + "\n");
+    m_data.append("From: " + m_config->user + "\n");
     m_data.append("Subject: " + email.subject + "\n");
     m_data.append("MIME-Version: 1.0\n");
     m_data.append("Content-Type: text/html; charset=utf-8\n");
+    // Body
     m_data.append(email.body);
     m_data.append("\n\n");
     m_data.replace("\n", "\r\n");
     m_data.replace("\r\n.\r\n", "\r\n..\r\n");
 
     m_state = Init;
-    m_socket->connectToHostEncrypted(m_config.host, m_config.port);
-    if (!m_socket->waitForConnected(m_config.timeout)) {
-        qCCritical(EmailLog) << QString("Cannot connect with mail server: %1").arg(qUtf8Printable(m_socket->errorString()));
+    m_socket->connectToHostEncrypted(m_config->host, m_config->port);
+    bool ok = m_socket->waitForConnected(m_config->timeout);
+    if (ok) {
+        m_state = Init;
+    } else {
+        emit finished(ConnectionError);
     }
-    qCDebug(EmailLog) << "Connection established.";
 }
 
-QString toBase64(const QString& string)
+QString Sender::exitCodeDescription(int code)
 {
-    QByteArray ba;
-    ba.append(string);
-    return ba.toBase64();
+    static QMap<ExitCode,QString> description {
+        {Success, tr("Message is sent.")},
+        {NotConfigured, tr("Email account is not configured properly.")},
+        {ConnectionError, tr("Could not connect to server within defined timeout.")},
+        {AuthLoginError, tr("LOGIN authentication is not supported by server.")},
+        {UserFailed, tr("Authentication failed. Are you using base64 encoding?")},
+        {PassFailed, tr("Authentication failed. Maybe wrong password?")},
+        {RcptError, tr("Failed to add email recipient.")},
+        {Unknown, tr("Failed to send message due to unknown error.")}
+    };
+    return description.value(static_cast<ExitCode>(code));
 }
 
 }  // namespace Email

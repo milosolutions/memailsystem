@@ -30,50 +30,43 @@ SOFTWARE.
 
 class QSslSocket;
 class QTextStream;
+class EmailConfig;
 
 namespace Email
 {
 
 Q_DECLARE_LOGGING_CATEGORY(EmailLog);
 
-struct EmailConfig
-{
-    int timeout;
-    quint16 port;
-    QString host;
-    QString user;
-    QString password;
-    bool base64Encoding = true;
-};
-
 struct Message
 {
-    QString recipient;
-    QString subject;
-    QString body;
+    QByteArray recipient;
+    QByteArray subject;
+    QByteArray body;
 };
-
-QString toBase64(const QString& string);
 
 class Sender : public QObject
 {
     Q_OBJECT
 
 public:
-    Sender(const EmailConfig& config, QObject *parent);
+    enum ExitCode {Success, NotConfigured, ConnectionError, AuthLoginError,
+                   UserFailed, PassFailed, RcptError, Unknown};
+    Sender(EmailConfig* config, QObject *parent);
     void send(const Message &email);
-
+    static QString exitCodeDescription(int code);
+signals:
+    void finished(int exitCode) const;
 private:
+    enum States { Init, HandShake, Auth, User, Pass, From, Rcpt, Mail, Data, Sent, Close };
     void readFromSocket();
     void processNextRequest();
-    QSslSocket *m_socket = nullptr;
-    QTextStream *m_textStream = nullptr;
+    QSslSocket *m_socket{};
+    QTextStream *m_textStream{};
     int m_state;
-    EmailConfig m_config;
-    QString m_recipient;
-    QString m_data;
-    enum States { Init, HandShake, Auth, User, Pass, Rcpt, Mail, Data, Body,
-                  Quit, Close };
+    ExitCode m_exitCode{Unknown};
+    EmailConfig *m_config;
+    QByteArray m_recipient;
+    QByteArray m_data;
     QQueue<Message> m_emailQueue;
     bool m_processing = false;
 };
