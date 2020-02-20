@@ -11,7 +11,9 @@ set(SOURCES emailconfig.h memailsystem.h memailsystem.cpp)
 
 set(OTHER_FILES README.md memailsystem.doxyfile)
 
-add_library(memailsystem OBJECT ${SOURCES} ${OTHER_FILES})
+add_library(memailsystem OBJECT ${SOURCES} ${OTHER_FILES}
+  $<TARGET_OBJECTS:mconfig>
+)
 
 # Defines
 target_compile_definitions(memailsystem PUBLIC MEMAILSYSTEM_LIB)
@@ -20,6 +22,7 @@ target_include_directories(memailsystem
   PUBLIC
   $<INSTALL_INTERFACE:include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<TARGET_PROPERTY:mconfig,INCLUDE_DIRECTORIES>
 )
 
 target_link_libraries(memailsystem
