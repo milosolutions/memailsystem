@@ -1,5 +1,5 @@
 #include "emailconfig.h"
-#include "emailsystem.h"
+#include "memailsystem.h"
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QDebug>

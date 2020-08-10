@@ -21,6 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 *******************************************************************************/
 #include "memailsystem.h"
+#include "emailconfig.h"
 #include <QCoreApplication>
 #include <QLoggingCategory>
 #include <QDebug>
@@ -34,18 +35,18 @@ int main(int argc, char *argv[])
     a.setApplicationName("Example mail app");
     a.setOrganizationName("Milo");
 
-    Email::EmailConfig example;
+    EmailConfig example;
     example.host = "smtp.gmail.com";
     example.port = 465;
     example.user = "your.email@gmail.com";
     example.password = "your.password";
     example.timeout = 10000;
 
-    auto mailSender = new Email::Sender(example, &a);
+    auto mailSender = new Email::Sender(&example, &a);
     Email::Message m;
     m.recipient = "any@recipient.pl";
-    m.subject = QString("HelloWorld! - subject");
-    m.body = QString("HelloWorld! - content");;
+    m.subject = QByteArray("HelloWorld! - subject");
+    m.body = QByteArray("HelloWorld! - content");
     mailSender->send(m);
 
     return a.exec();
